@@ -619,6 +619,35 @@ void Datacenter::serializeToStream(NativeByteBuffer *stream) {
     }
 }
 
+void Datacenter::setPermanentAuthKey(ByteArray *authKey, int64_t authKeyId) {
+    if (authKey == nullptr) {
+        return;
+    }
+    if (authKeyPerm != nullptr) {
+        delete authKeyPerm;
+        authKeyPerm = nullptr;
+    }
+    authKeyPerm = authKey;
+    authKeyPermId = authKeyId;
+    if (authKeyTemp != nullptr) {
+        delete authKeyTemp;
+        authKeyTemp = nullptr;
+    }
+    authKeyTempId = 0;
+    if (authKeyMediaTemp != nullptr) {
+        delete authKeyMediaTemp;
+        authKeyMediaTemp = nullptr;
+    }
+    authKeyMediaTempId = 0;
+    serverSalts.clear();
+    mediaServerSalts.clear();
+    handshakes.clear();
+    lastInitVersion = 0;
+    lastInitMediaVersion = 0;
+    authorized = false;
+    if (LOGS_ENABLED) DEBUG_D("dc%d account%u setPermanentAuthKey, keyId=%lld", datacenterId, instanceNum, (long long) authKeyId);
+}
+
 void Datacenter::clearAuthKey(HandshakeType type) {
     if (type == HandshakeTypeAll || isCdnDatacenter) {
         if (authKeyPerm != nullptr) {

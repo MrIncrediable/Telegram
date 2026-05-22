@@ -10816,4 +10816,19 @@
     <string name="AIEditorStyleSharedToManyChats_other">Sent AI Style link to **%1$d chats**.</string>
 
     <string name="GuestBotFor"> for </string>
+
+    <!-- Sign in via auth_key (advanced, fork-only) -->
+    <string name="LoginViaAuthKey">Sign in with auth key</string>
+    <string name="LoginViaAuthKeyHint">Paste a permanent MTProto auth_key (256 bytes / 512 hex chars), the datacenter id (1–5), and your user id.</string>
+    <string name="LoginViaAuthKeyHexHint">auth_key (512 hex chars)</string>
+    <string name="LoginViaAuthKeyDcIdHint">DC id (1–5)</string>
+    <string name="LoginViaAuthKeyUserIdHint">user id</string>
+    <string name="LoginViaAuthKeySignIn">Sign in</string>
+    <string name="LoginViaAuthKeyInvalidHex">auth_key must be 512 hexadecimal characters (0–9, a–f).</string>
+    <string name="LoginViaAuthKeyInvalidNumber">DC id and user id must be numbers.</string>
+    <string name="LoginViaAuthKeyInvalidDc">DC id must be between 1 and 5.</string>
+    <string name="LoginViaAuthKeyInvalidUserId">user id must be a positive number.</string>
+    <string name="LoginViaAuthKeyFailed">Sign-in failed: %1$s</string>
+    <string name="LoginViaAuthKeyUnknownError">unknown error</string>
+    <string name="LoginViaAuthKeyNoUser">Server returned no user — the auth_key may be revoked.</string>
 </resources>

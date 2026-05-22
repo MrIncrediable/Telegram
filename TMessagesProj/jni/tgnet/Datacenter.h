@@ -40,6 +40,7 @@ public:
     void replaceAddresses(std::vector<TcpAddress> &newAddresses, uint32_t flags);
     void serializeToStream(NativeByteBuffer *stream);
     void clearAuthKey(HandshakeType type);
+    void setPermanentAuthKey(ByteArray *authKey, int64_t authKeyId);
     void clearServerSalts(bool media);
     int64_t getServerSalt(bool media);
     void mergeServerSalts(TL_future_salts *newSalts, bool media);
