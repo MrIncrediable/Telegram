@@ -62,6 +62,7 @@ public:
     ConnectionState getConnectionState();
     void setUserId(int64_t userId);
     void setUserPremium(bool premium);
+    void importPermanentAuthKey(uint32_t datacenterId, ByteArray *authKey);
     void switchBackend(bool restart);
     void resumeNetwork(bool partial);
     void pauseNetwork();

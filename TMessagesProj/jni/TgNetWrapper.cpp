@@ -2,6 +2,7 @@
 #include "tgnet/ApiScheme.h"
 #include "tgnet/BuffersStorage.h"
 #include "tgnet/NativeByteBuffer.h"
+#include "tgnet/ByteArray.h"
 #include "tgnet/ConnectionsManager.h"
 #include "tgnet/MTProtoScheme.h"
 #include "tgnet/ConnectionSocket.h"
@@ -251,6 +252,19 @@ jint getConnectionState(JNIEnv *env, jclass c, jint instanceNum) {
 
 void setUserId(JNIEnv *env, jclass c, jint instanceNum, int64_t id) {
     ConnectionsManager::getInstance(instanceNum).setUserId(id);
+}
+
+void importAuthKey(JNIEnv *env, jclass c, jint instanceNum, jint datacenterId, jbyteArray authKey) {
+    if (authKey == nullptr) {
+        return;
+    }
+    jsize len = env->GetArrayLength(authKey);
+    if (len <= 0) {
+        return;
+    }
+    auto *byteArray = new ByteArray((uint32_t) len);
+    env->GetByteArrayRegion(authKey, 0, len, reinterpret_cast<jbyte *>(byteArray->bytes));
+    ConnectionsManager::getInstance(instanceNum).importPermanentAuthKey((uint32_t) datacenterId, byteArray);
 }
 
 void setUserPremium(JNIEnv *env, jclass c, jint instanceNum, bool premium) {
@@ -539,6 +553,7 @@ static JNINativeMethod ConnectionsManagerMethods[] = {
         {"native_setProxySettings", "(ILjava/lang/String;ILjava/lang/String;Ljava/lang/String;Ljava/lang/String;)V", (void *) setProxySettings},
         {"native_getConnectionState", "(I)I", (void *) getConnectionState},
         {"native_setUserId", "(IJ)V", (void *) setUserId},
+        {"native_importAuthKey", "(II[B)V", (void *) importAuthKey},
         {"native_init", "(IIIILjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;IJZZZII)V", (void *) init},
         {"native_setLangCode", "(ILjava/lang/String;)V", (void *) setLangCode},
         {"native_setRegId", "(ILjava/lang/String;)V", (void *) setRegId},

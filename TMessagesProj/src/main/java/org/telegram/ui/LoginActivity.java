@@ -149,6 +149,7 @@ import org.telegram.tgnet.RequestDelegate;
 import org.telegram.tgnet.SerializedData;
 import org.telegram.tgnet.TLObject;
 import org.telegram.tgnet.TLRPC;
+import org.telegram.tgnet.Vector;
 import org.telegram.tgnet.tl.TL_account;
 import org.telegram.ui.ActionBar.ActionBar;
 import org.telegram.ui.ActionBar.AlertDialog;
@@ -1641,6 +1642,164 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
         onAuthSuccess(res);
     }
 
+    private void showAuthKeyLoginDialog() {
+        if (getParentActivity() == null) {
+            return;
+        }
+        Context context = getParentActivity();
+        AlertDialog.Builder builder = new AlertDialog.Builder(context);
+        builder.setTitle(getString(R.string.LoginViaAuthKey));
+        builder.setMessage(getString(R.string.LoginViaAuthKeyHint));
+
+        LinearLayout container = new LinearLayout(context);
+        container.setOrientation(LinearLayout.VERTICAL);
+        int hPad = AndroidUtilities.dp(24);
+        container.setPadding(hPad, AndroidUtilities.dp(8), hPad, 0);
+
+        EditTextBoldCursor authKeyField = new EditTextBoldCursor(context);
+        authKeyField.setHint(getString(R.string.LoginViaAuthKeyHexHint));
+        authKeyField.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
+        authKeyField.setTextColor(Theme.getColor(Theme.key_dialogTextBlack));
+        authKeyField.setHintTextColor(Theme.getColor(Theme.key_dialogTextHint));
+        authKeyField.setHeaderHintColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlueHeader));
+        authKeyField.setCursorColor(Theme.getColor(Theme.key_dialogTextBlack));
+        authKeyField.setCursorSize(AndroidUtilities.dp(20));
+        authKeyField.setCursorWidth(1.5f);
+        authKeyField.setBackgroundDrawable(Theme.createEditTextDrawable(context, true));
+        authKeyField.setInputType(InputType.TYPE_CLASS_TEXT);
+        authKeyField.setMaxLines(3);
+        authKeyField.setSingleLine(false);
+        authKeyField.setImeOptions(EditorInfo.IME_ACTION_NEXT);
+        authKeyField.setTypeface(Typeface.MONOSPACE);
+        container.addView(authKeyField, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 0, 8, 0, 8));
+
+        EditTextBoldCursor dcIdField = new EditTextBoldCursor(context);
+        dcIdField.setHint(getString(R.string.LoginViaAuthKeyDcIdHint));
+        dcIdField.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
+        dcIdField.setTextColor(Theme.getColor(Theme.key_dialogTextBlack));
+        dcIdField.setHintTextColor(Theme.getColor(Theme.key_dialogTextHint));
+        dcIdField.setCursorColor(Theme.getColor(Theme.key_dialogTextBlack));
+        dcIdField.setCursorSize(AndroidUtilities.dp(20));
+        dcIdField.setCursorWidth(1.5f);
+        dcIdField.setBackgroundDrawable(Theme.createEditTextDrawable(context, true));
+        dcIdField.setInputType(InputType.TYPE_CLASS_NUMBER);
+        dcIdField.setMaxLines(1);
+        dcIdField.setSingleLine(true);
+        dcIdField.setImeOptions(EditorInfo.IME_ACTION_NEXT);
+        container.addView(dcIdField, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 0, 8, 0, 8));
+
+        EditTextBoldCursor userIdField = new EditTextBoldCursor(context);
+        userIdField.setHint(getString(R.string.LoginViaAuthKeyUserIdHint));
+        userIdField.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
+        userIdField.setTextColor(Theme.getColor(Theme.key_dialogTextBlack));
+        userIdField.setHintTextColor(Theme.getColor(Theme.key_dialogTextHint));
+        userIdField.setCursorColor(Theme.getColor(Theme.key_dialogTextBlack));
+        userIdField.setCursorSize(AndroidUtilities.dp(20));
+        userIdField.setCursorWidth(1.5f);
+        userIdField.setBackgroundDrawable(Theme.createEditTextDrawable(context, true));
+        userIdField.setInputType(InputType.TYPE_CLASS_NUMBER);
+        userIdField.setMaxLines(1);
+        userIdField.setSingleLine(true);
+        userIdField.setImeOptions(EditorInfo.IME_ACTION_DONE);
+        container.addView(userIdField, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 0, 8, 0, 8));
+
+        builder.setView(container);
+        builder.setPositiveButton(getString(R.string.LoginViaAuthKeySignIn), null);
+        builder.setNegativeButton(getString(R.string.Cancel), (dialog, which) -> dialog.dismiss());
+
+        AlertDialog dialog = builder.create();
+        dialog.show();
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+            String authKeyHex = authKeyField.getText().toString().trim().replaceAll("\\s+", "").toLowerCase();
+            String dcIdStr = dcIdField.getText().toString().trim();
+            String userIdStr = userIdField.getText().toString().trim();
+
+            if (authKeyHex.length() != 512 || !authKeyHex.matches("[0-9a-f]+")) {
+                AndroidUtilities.shakeView(authKeyField);
+                Toast.makeText(context, getString(R.string.LoginViaAuthKeyInvalidHex), Toast.LENGTH_LONG).show();
+                return;
+            }
+            int dcId;
+            long userId;
+            try {
+                dcId = Integer.parseInt(dcIdStr);
+                userId = Long.parseLong(userIdStr);
+            } catch (NumberFormatException e) {
+                Toast.makeText(context, getString(R.string.LoginViaAuthKeyInvalidNumber), Toast.LENGTH_LONG).show();
+                return;
+            }
+            if (dcId < 1 || dcId > 5) {
+                AndroidUtilities.shakeView(dcIdField);
+                Toast.makeText(context, getString(R.string.LoginViaAuthKeyInvalidDc), Toast.LENGTH_LONG).show();
+                return;
+            }
+            if (userId <= 0) {
+                AndroidUtilities.shakeView(userIdField);
+                Toast.makeText(context, getString(R.string.LoginViaAuthKeyInvalidUserId), Toast.LENGTH_LONG).show();
+                return;
+            }
+            byte[] authKeyBytes = Utilities.hexToBytes(authKeyHex);
+            if (authKeyBytes == null || authKeyBytes.length != 256) {
+                AndroidUtilities.shakeView(authKeyField);
+                Toast.makeText(context, getString(R.string.LoginViaAuthKeyInvalidHex), Toast.LENGTH_LONG).show();
+                return;
+            }
+            dialog.dismiss();
+            performAuthKeyLogin(dcId, userId, authKeyBytes);
+        });
+    }
+
+    private void performAuthKeyLogin(int dcId, long expectedUserId, byte[] authKeyBytes) {
+        needShowProgress(0);
+        // Wipe any existing session state for this account (auth keys + queued requests).
+        ConnectionsManager.getInstance(currentAccount).cleanup(true);
+        // Inject the provided auth_key into the native datacenter and mark it as current.
+        ConnectionsManager.getInstance(currentAccount).importAuthKey(dcId, authKeyBytes);
+
+        // Fetch the self-user so we can populate UserConfig and reuse the normal post-login plumbing.
+        TLRPC.TL_users_getUsers req = new TLRPC.TL_users_getUsers();
+        req.id.add(new TLRPC.TL_inputUserSelf());
+        ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
+            needHideProgress(false);
+            if (error != null || !(response instanceof Vector)) {
+                String errText = error != null ? (error.code + " " + error.text) : getString(R.string.LoginViaAuthKeyUnknownError);
+                if (getParentActivity() == null) {
+                    return;
+                }
+                new AlertDialog.Builder(getParentActivity())
+                        .setTitle(getString(R.string.LoginViaAuthKey))
+                        .setMessage(LocaleController.formatString("LoginViaAuthKeyFailed", R.string.LoginViaAuthKeyFailed, errText))
+                        .setPositiveButton(getString(R.string.OK), null)
+                        .show();
+                return;
+            }
+            ArrayList<Object> objects = ((Vector) response).objects;
+            TLRPC.User user = null;
+            for (int i = 0; i < objects.size(); i++) {
+                if (objects.get(i) instanceof TLRPC.User) {
+                    user = (TLRPC.User) objects.get(i);
+                    break;
+                }
+            }
+            if (user == null) {
+                if (getParentActivity() != null) {
+                    new AlertDialog.Builder(getParentActivity())
+                            .setTitle(getString(R.string.LoginViaAuthKey))
+                            .setMessage(getString(R.string.LoginViaAuthKeyNoUser))
+                            .setPositiveButton(getString(R.string.OK), null)
+                            .show();
+                }
+                return;
+            }
+            if (expectedUserId != 0 && user.id != expectedUserId) {
+                FileLog.d("LoginViaAuthKey: expected userId=" + expectedUserId + " but server returned " + user.id + " — using server value");
+            }
+            TLRPC.TL_auth_authorization auth = new TLRPC.TL_auth_authorization();
+            auth.user = user;
+            onAuthSuccess(auth);
+        }), null, null, ConnectionsManager.RequestFlagWithoutLogin | ConnectionsManager.RequestFlagFailOnServerErrors, dcId, ConnectionsManager.ConnectionTypeGeneric, true);
+    }
+
     private void onAuthSuccess(TLRPC.TL_auth_authorization res) {
         onAuthSuccess(res, false);
     }
@@ -2492,6 +2651,18 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
                     }
                     loadCountries();
                 });
+            }
+
+            if (activityMode == MODE_LOGIN) {
+                TextView authKeyLoginButton = new TextView(context);
+                authKeyLoginButton.setText(getString(R.string.LoginViaAuthKey));
+                authKeyLoginButton.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
+                authKeyLoginButton.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlueText4));
+                authKeyLoginButton.setGravity(Gravity.CENTER);
+                authKeyLoginButton.setPadding(AndroidUtilities.dp(16), AndroidUtilities.dp(8), AndroidUtilities.dp(16), AndroidUtilities.dp(8));
+                authKeyLoginButton.setOnClickListener(v -> showAuthKeyLoginDialog());
+                addView(authKeyLoginButton, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL, 16, 8, 16, 0));
+                bottomMargin = Math.max(0, bottomMargin - 32);
             }
 
             if (bottomMargin > 0 && !AndroidUtilities.isSmallScreen()) {

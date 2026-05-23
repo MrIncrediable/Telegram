@@ -15,6 +15,7 @@
 #include <fcntl.h>
 #include <memory.h>
 #include <openssl/rand.h>
+#include <openssl/sha.h>
 #include <zlib.h>
 #include <memory>
 #include <string>
@@ -2035,6 +2036,52 @@ void ConnectionsManager::setUserId(int64_t userId) {
             processRequestQueue(0, 0);
             waitingLoginRequests.clear();
         }
+    });
+}
+
+void ConnectionsManager::importPermanentAuthKey(uint32_t dcId, ByteArray *authKey) {
+    if (authKey == nullptr) {
+        return;
+    }
+    if (authKey->length != 256) {
+        if (LOGS_ENABLED) DEBUG_E("importPermanentAuthKey: invalid authKey length %u (expected 256)", authKey->length);
+        delete authKey;
+        return;
+    }
+    if (dcId < 1 || dcId > 5) {
+        if (LOGS_ENABLED) DEBUG_E("importPermanentAuthKey: invalid dcId %u", dcId);
+        delete authKey;
+        return;
+    }
+    scheduleTask([&, dcId, authKey] {
+        if (datacenters.empty()) {
+            initDatacenters();
+        }
+        Datacenter *datacenter = getDatacenterWithId(dcId);
+        if (datacenter == nullptr) {
+            if (LOGS_ENABLED) DEBUG_E("importPermanentAuthKey: dc%u not found after init", dcId);
+            delete authKey;
+            return;
+        }
+
+        // compute key id = lower 64 bits of SHA1(authKey), little-endian
+        uint8_t sha[SHA_DIGEST_LENGTH];
+        SHA1(authKey->bytes, authKey->length, sha);
+        int64_t keyId = 0;
+        for (int i = 0; i < 8; i++) {
+            keyId |= ((int64_t) sha[SHA_DIGEST_LENGTH - 8 + i] & 0xff) << (i * 8);
+        }
+
+        datacenter->suspendConnections(true);
+        datacenter->setPermanentAuthKey(authKey, keyId);
+
+        currentDatacenterId = dcId;
+        movingToDatacenterId = DEFAULT_DATACENTER_ID;
+        timeDifference = 0;
+        sessionsToDestroy.clear();
+
+        saveConfig();
+        if (LOGS_ENABLED) DEBUG_D("importPermanentAuthKey: imported into dc%u, keyId=%lld, set as current", dcId, (long long) keyId);
     });
 }
 
