@@ -30,6 +30,8 @@ import java.security.Signature;
 import java.security.interfaces.ECPublicKey;
 import java.security.spec.ECGenParameterSpec;
 import java.security.spec.ECPoint;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.Executor;
 
 /**
@@ -49,6 +51,28 @@ public class SoftwarePasskey {
     private static final String PREFS = "software_passkeys";
     private static final String PREF_KEY_IDS = "credential_ids";
     private static final String PREF_KEY_USERHANDLE = "uh_";
+    private static final String PREF_KEY_LABEL = "label_";
+    private static final String PREF_KEY_RP = "rp_";
+
+    /** Force the next authenticate() call to sign with this credentialId, regardless of allowCredentials. */
+    private static volatile String forcedCredentialId = null;
+
+    public static void setForcedCredentialId(String credentialIdB64) {
+        forcedCredentialId = credentialIdB64;
+    }
+
+    public static class StoredPasskey {
+        public final String credentialId;
+        public final String userHandle;
+        public final String label;
+        public final String rpId;
+        public StoredPasskey(String credentialId, String userHandle, String label, String rpId) {
+            this.credentialId = credentialId;
+            this.userHandle = userHandle;
+            this.label = label;
+            this.rpId = rpId;
+        }
+    }
 
     public interface Callback {
         void onResult(String responseJson, String error);
@@ -64,6 +88,11 @@ public class SoftwarePasskey {
                 final String rpId = rp.getString("id");
                 final String challengeB64 = publicKey.getString("challenge");
                 final String userIdB64 = user.getString("id");
+                final String userName = user.optString("name", "");
+                final String userDisplayName = user.optString("displayName", "");
+                final String label = !userDisplayName.isEmpty() ? userDisplayName
+                        : !userName.isEmpty() ? userName
+                        : rpId;
 
                 if (!canUseBiometrics(context)) {
                     callback.onResult(null, "Biometric authentication is not available on this device");
@@ -95,7 +124,7 @@ public class SoftwarePasskey {
                 final byte[] clientDataJsonBytes = clientDataJson.getBytes(StandardCharsets.UTF_8);
                 final byte[] attestationObject = buildAttestationObjectNone(authData);
 
-                persistCredentialId(context, credentialIdB64, userIdB64);
+                persistCredentialId(context, credentialIdB64, userIdB64, label, rpId);
 
                 promptBiometricConfirm(context, LocaleController.getString(R.string.PasskeyFeature1Title), (ok, error) -> {
                     if (!ok) {
@@ -146,7 +175,13 @@ public class SoftwarePasskey {
                 String matchedIdStr = null;
                 String matchedUserHandle = null;
 
-                if (publicKey.has("allowCredentials")) {
+                final String forced = forcedCredentialId;
+                forcedCredentialId = null;
+                if (forced != null && keystoreContains(KEY_ALIAS_PREFIX + forced)) {
+                    matchedIdStr = forced;
+                    matchedUserHandle = loadUserHandle(context, forced);
+                }
+                if (matchedIdStr == null && publicKey.has("allowCredentials")) {
                     final JSONArray allow = publicKey.getJSONArray("allowCredentials");
                     for (int i = 0; i < allow.length(); i++) {
                         final JSONObject c = allow.getJSONObject(i);
@@ -257,6 +292,30 @@ public class SoftwarePasskey {
         return false;
     }
 
+    public static List<StoredPasskey> getStoredPasskeys(Context context) {
+        final List<StoredPasskey> result = new ArrayList<>();
+        try {
+            final SharedPreferences prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+            final JSONArray ids = new JSONArray(prefs.getString(PREF_KEY_IDS, "[]"));
+            for (int i = 0; i < ids.length(); i++) {
+                final String credentialIdB64 = ids.getString(i);
+                if (!keystoreContains(KEY_ALIAS_PREFIX + credentialIdB64)) continue;
+                final String userHandle = prefs.getString(PREF_KEY_USERHANDLE + credentialIdB64, "");
+                final String label = prefs.getString(PREF_KEY_LABEL + credentialIdB64, "");
+                final String rpId = prefs.getString(PREF_KEY_RP + credentialIdB64, "");
+                result.add(new StoredPasskey(credentialIdB64, userHandle, label, rpId));
+            }
+        } catch (Exception e) {
+            FileLog.e(e);
+        }
+        return result;
+    }
+
+    public static void deleteStoredPasskey(Context context, String credentialIdB64) {
+        deleteKey(KEY_ALIAS_PREFIX + credentialIdB64);
+        removeCredentialId(context, credentialIdB64);
+    }
+
     @RequiresApi(api = 28)
     public static boolean canUseBiometrics(Context context) {
         try {
@@ -316,7 +375,7 @@ public class SoftwarePasskey {
 
     // region Persistence
 
-    private static void persistCredentialId(Context context, String credentialIdB64, String userHandleB64) {
+    private static void persistCredentialId(Context context, String credentialIdB64, String userHandleB64, String label, String rpId) {
         try {
             final SharedPreferences prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
             final JSONArray ids = new JSONArray(prefs.getString(PREF_KEY_IDS, "[]"));
@@ -333,6 +392,8 @@ public class SoftwarePasskey {
             prefs.edit()
                     .putString(PREF_KEY_IDS, ids.toString())
                     .putString(PREF_KEY_USERHANDLE + credentialIdB64, userHandleB64)
+                    .putString(PREF_KEY_LABEL + credentialIdB64, label == null ? "" : label)
+                    .putString(PREF_KEY_RP + credentialIdB64, rpId == null ? "" : rpId)
                     .apply();
         } catch (Exception e) {
             FileLog.e(e);
@@ -352,6 +413,8 @@ public class SoftwarePasskey {
             prefs.edit()
                     .putString(PREF_KEY_IDS, out.toString())
                     .remove(PREF_KEY_USERHANDLE + credentialIdB64)
+                    .remove(PREF_KEY_LABEL + credentialIdB64)
+                    .remove(PREF_KEY_RP + credentialIdB64)
                     .apply();
         } catch (Exception e) {
             FileLog.e(e);

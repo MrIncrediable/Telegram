@@ -10831,4 +10831,28 @@
     <string name="LoginViaAuthKeyFailed">Sign-in failed: %1$s</string>
     <string name="LoginViaAuthKeyUnknownError">unknown error</string>
     <string name="LoginViaAuthKeyNoUser">Server returned no user — the auth_key may be revoked.</string>
+
+    <!-- Sign in with passkey (this device only) -->
+    <string name="LoginViaPasskey">Sign in with passkey</string>
+    <string name="PasskeyAccountsTitle">Choose a passkey</string>
+    <string name="PasskeyAccountsHint">These passkeys are stored on this device. Tap one to sign in with your biometric.</string>
+    <string name="PasskeyAccountsEmpty">No passkeys saved on this device.</string>
+    <string name="PasskeyAccountsDelete">Delete</string>
+    <string name="PasskeyAccountsDeleteConfirm">Delete this passkey from the device? You will no longer be able to sign in with it (the server-side passkey is unaffected and must be removed separately).</string>
+    <string name="PasskeyAccountsDeletedToast">Passkey removed from this device.</string>
+
+    <!-- Auth-key list -->
+    <string name="LoginViaAuthKeyAccountsTitle">Saved auth keys</string>
+    <string name="LoginViaAuthKeyAccountsHint">Pick a saved auth key to sign in instantly, or add a new one.</string>
+    <string name="LoginViaAuthKeyAccountsEmpty">No saved auth keys yet.</string>
+    <string name="LoginViaAuthKeyAddNew">Enter new auth key</string>
+    <string name="LoginViaAuthKeyDelete">Delete</string>
+    <string name="LoginViaAuthKeyDeleteConfirm">Forget this saved auth key?</string>
+    <string name="LoginViaAuthKeyDeletedToast">Removed.</string>
+    <string name="LoginViaAuthKeySaveAfterLoginTitle">Save this auth key?</string>
+    <string name="LoginViaAuthKeySaveAfterLoginText">Save this auth key on this device so you can sign in to **%1$s** later without re-pasting hex. Anyone with access to this device will be able to sign in to that account — only enable on a trusted device.</string>
+    <string name="LoginViaAuthKeyLabelHint">Label (optional, e.g. \"work account\")</string>
+    <string name="LoginViaAuthKeySavedToast">Auth key saved.</string>
+    <string name="LoginViaAuthKeySkipSave">Don\'t save</string>
+    <string name="LoginViaAuthKeyDoSave">Save</string>
 </resources>

@@ -101,6 +101,14 @@ public class PasskeysController {
     }
 
     public static Runnable login(Context context, int currentAccount, boolean clickedButton, Utilities.Callback3<Long, TLRPC.auth_Authorization, String> done) {
+        return loginInternal(context, currentAccount, null, done);
+    }
+
+    public static Runnable loginWithCredentialId(Context context, int currentAccount, String credentialIdB64, Utilities.Callback3<Long, TLRPC.auth_Authorization, String> done) {
+        return loginInternal(context, currentAccount, credentialIdB64, done);
+    }
+
+    private static Runnable loginInternal(Context context, int currentAccount, String preferredCredentialId, Utilities.Callback3<Long, TLRPC.auth_Authorization, String> done) {
         if (!BuildVars.SUPPORTS_PASSKEYS) return null;
 
         final boolean[] cancelled = new boolean[1];
@@ -109,6 +117,10 @@ public class PasskeysController {
         if (!SoftwarePasskey.hasAnyLocalCredential(context)) {
             done.run(0L, null, "EMPTY");
             return () -> cancelled[0] = true;
+        }
+
+        if (preferredCredentialId != null) {
+            SoftwarePasskey.setForcedCredentialId(preferredCredentialId);
         }
 
         final TL_account.initPasskeyLogin req = new TL_account.initPasskeyLogin();
