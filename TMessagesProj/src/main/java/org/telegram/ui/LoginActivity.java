@@ -137,7 +137,9 @@ import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.MessagesStorage;
 import org.telegram.messenger.NotificationCenter;
+import org.telegram.messenger.AuthKeysStorage;
 import org.telegram.messenger.PasskeysController;
+import org.telegram.messenger.SoftwarePasskey;
 import org.telegram.messenger.PushListenerController;
 import org.telegram.messenger.R;
 import org.telegram.messenger.SRPHelper;
@@ -1700,8 +1702,23 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
         userIdField.setInputType(InputType.TYPE_CLASS_NUMBER);
         userIdField.setMaxLines(1);
         userIdField.setSingleLine(true);
-        userIdField.setImeOptions(EditorInfo.IME_ACTION_DONE);
+        userIdField.setImeOptions(EditorInfo.IME_ACTION_NEXT);
         container.addView(userIdField, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 0, 8, 0, 8));
+
+        EditTextBoldCursor labelField = new EditTextBoldCursor(context);
+        labelField.setHint(getString(R.string.LoginViaAuthKeyLabelHint));
+        labelField.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
+        labelField.setTextColor(Theme.getColor(Theme.key_dialogTextBlack));
+        labelField.setHintTextColor(Theme.getColor(Theme.key_dialogTextHint));
+        labelField.setCursorColor(Theme.getColor(Theme.key_dialogTextBlack));
+        labelField.setCursorSize(AndroidUtilities.dp(20));
+        labelField.setCursorWidth(1.5f);
+        labelField.setBackgroundDrawable(Theme.createEditTextDrawable(context, true));
+        labelField.setInputType(InputType.TYPE_CLASS_TEXT);
+        labelField.setMaxLines(1);
+        labelField.setSingleLine(true);
+        labelField.setImeOptions(EditorInfo.IME_ACTION_DONE);
+        container.addView(labelField, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 0, 8, 0, 8));
 
         builder.setView(container);
         builder.setPositiveButton(getString(R.string.LoginViaAuthKeySignIn), null);
@@ -1744,9 +1761,199 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
                 Toast.makeText(context, getString(R.string.LoginViaAuthKeyInvalidHex), Toast.LENGTH_LONG).show();
                 return;
             }
+            String label = labelField.getText().toString().trim();
             dialog.dismiss();
+            AuthKeysStorage.save(ApplicationLoader.applicationContext, dcId, userId, authKeyBytes, label);
             performAuthKeyLogin(dcId, userId, authKeyBytes);
         });
+    }
+
+    private void showAuthKeyAccountsDialog() {
+        final Context context = getParentActivity();
+        if (context == null) return;
+
+        final java.util.List<AuthKeysStorage.StoredAuthKey> stored = AuthKeysStorage.getAll(context);
+
+        AlertDialog.Builder builder = new AlertDialog.Builder(context);
+        builder.setTitle(getString(R.string.LoginViaAuthKeyAccountsTitle));
+
+        LinearLayout container = new LinearLayout(context);
+        container.setOrientation(LinearLayout.VERTICAL);
+        int hPad = AndroidUtilities.dp(8);
+        container.setPadding(hPad, AndroidUtilities.dp(4), hPad, 0);
+
+        TextView hint = new TextView(context);
+        hint.setText(getString(stored.isEmpty() ? R.string.LoginViaAuthKeyAccountsEmpty : R.string.LoginViaAuthKeyAccountsHint));
+        hint.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
+        hint.setTextColor(Theme.getColor(Theme.key_dialogTextGray3));
+        hint.setPadding(AndroidUtilities.dp(16), AndroidUtilities.dp(4), AndroidUtilities.dp(16), AndroidUtilities.dp(8));
+        container.addView(hint, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+
+        ScrollView scroll = new ScrollView(context);
+        LinearLayout listLayout = new LinearLayout(context);
+        listLayout.setOrientation(LinearLayout.VERTICAL);
+        scroll.addView(listLayout, new ScrollView.LayoutParams(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+        container.addView(scroll, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 0, 0, 0, 0));
+
+        final AlertDialog[] dialogRef = new AlertDialog[1];
+
+        for (AuthKeysStorage.StoredAuthKey k : stored) {
+            final String labelText = !k.label.isEmpty() ? k.label : ("DC " + k.dcId + " \u00B7 user " + k.userId);
+            final String subText = (k.label.isEmpty() ? "" : ("DC " + k.dcId + " \u00B7 user " + k.userId));
+
+            LinearLayout row = buildAccountRow(context, labelText, subText, () -> {
+                if (dialogRef[0] != null) dialogRef[0].dismiss();
+                performAuthKeyLogin(k.dcId, k.userId, k.authKey);
+            }, () -> confirmAuthKeyDelete(context, k));
+            listLayout.addView(row, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+        }
+
+        LinearLayout addRow = buildAccountRow(context, getString(R.string.LoginViaAuthKeyAddNew), "", () -> {
+            if (dialogRef[0] != null) dialogRef[0].dismiss();
+            showAuthKeyLoginDialog();
+        }, null);
+        ((TextView) ((LinearLayout) addRow.getChildAt(0)).getChildAt(0)).setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlueText4));
+        listLayout.addView(addRow, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+
+        builder.setView(container);
+        builder.setNegativeButton(getString(R.string.Cancel), (d, which) -> d.dismiss());
+
+        dialogRef[0] = builder.create();
+        dialogRef[0].show();
+    }
+
+    private void confirmAuthKeyDelete(Context context, AuthKeysStorage.StoredAuthKey k) {
+        new AlertDialog.Builder(context)
+                .setTitle(getString(R.string.LoginViaAuthKeyDelete))
+                .setMessage(getString(R.string.LoginViaAuthKeyDeleteConfirm))
+                .setNegativeButton(getString(R.string.Cancel), null)
+                .setPositiveButton(getString(R.string.Delete), (dialog, which) -> {
+                    AuthKeysStorage.delete(context, k.id);
+                    Toast.makeText(context, getString(R.string.LoginViaAuthKeyDeletedToast), Toast.LENGTH_SHORT).show();
+                    showAuthKeyAccountsDialog();
+                })
+                .show();
+    }
+
+    @SuppressLint("NewApi")
+    private void showPasskeyAccountsDialog() {
+        final Context context = getParentActivity();
+        if (context == null) return;
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P || !BuildVars.SUPPORTS_PASSKEYS) return;
+
+        final java.util.List<SoftwarePasskey.StoredPasskey> stored = SoftwarePasskey.getStoredPasskeys(context);
+
+        AlertDialog.Builder builder = new AlertDialog.Builder(context);
+        builder.setTitle(getString(R.string.PasskeyAccountsTitle));
+
+        LinearLayout container = new LinearLayout(context);
+        container.setOrientation(LinearLayout.VERTICAL);
+        int hPad = AndroidUtilities.dp(8);
+        container.setPadding(hPad, AndroidUtilities.dp(4), hPad, 0);
+
+        TextView hint = new TextView(context);
+        hint.setText(getString(stored.isEmpty() ? R.string.PasskeyAccountsEmpty : R.string.PasskeyAccountsHint));
+        hint.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
+        hint.setTextColor(Theme.getColor(Theme.key_dialogTextGray3));
+        hint.setPadding(AndroidUtilities.dp(16), AndroidUtilities.dp(4), AndroidUtilities.dp(16), AndroidUtilities.dp(8));
+        container.addView(hint, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+
+        ScrollView scroll = new ScrollView(context);
+        LinearLayout listLayout = new LinearLayout(context);
+        listLayout.setOrientation(LinearLayout.VERTICAL);
+        scroll.addView(listLayout, new ScrollView.LayoutParams(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+        container.addView(scroll, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 0, 0, 0, 0));
+
+        final AlertDialog[] dialogRef = new AlertDialog[1];
+
+        for (SoftwarePasskey.StoredPasskey p : stored) {
+            final String mainText = !p.label.isEmpty() ? p.label : ("Passkey \u00B7 " + p.credentialId.substring(0, Math.min(8, p.credentialId.length())));
+            final String subText = p.rpId.isEmpty() ? "" : p.rpId;
+            LinearLayout row = buildAccountRow(context, mainText, subText, () -> {
+                if (dialogRef[0] != null) dialogRef[0].dismiss();
+                startPasskeyLogin(p.credentialId);
+            }, () -> confirmPasskeyDelete(context, p));
+            listLayout.addView(row, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+        }
+
+        builder.setView(container);
+        builder.setNegativeButton(getString(R.string.Cancel), (d, which) -> d.dismiss());
+
+        dialogRef[0] = builder.create();
+        dialogRef[0].show();
+    }
+
+    private void confirmPasskeyDelete(Context context, SoftwarePasskey.StoredPasskey p) {
+        new AlertDialog.Builder(context)
+                .setTitle(getString(R.string.PasskeyAccountsDelete))
+                .setMessage(getString(R.string.PasskeyAccountsDeleteConfirm))
+                .setNegativeButton(getString(R.string.Cancel), null)
+                .setPositiveButton(getString(R.string.Delete), (dialog, which) -> {
+                    SoftwarePasskey.deleteStoredPasskey(context, p.credentialId);
+                    Toast.makeText(context, getString(R.string.PasskeyAccountsDeletedToast), Toast.LENGTH_SHORT).show();
+                    showPasskeyAccountsDialog();
+                })
+                .show();
+    }
+
+    private LinearLayout buildAccountRow(Context context, String mainText, String subText, Runnable onClick, Runnable onLongClick) {
+        LinearLayout outer = new LinearLayout(context);
+        outer.setOrientation(LinearLayout.HORIZONTAL);
+        outer.setMinimumHeight(AndroidUtilities.dp(56));
+        outer.setGravity(Gravity.CENTER_VERTICAL);
+        outer.setBackgroundDrawable(Theme.getSelectorDrawable(false));
+        outer.setPadding(AndroidUtilities.dp(20), AndroidUtilities.dp(10), AndroidUtilities.dp(20), AndroidUtilities.dp(10));
+        if (onClick != null) outer.setOnClickListener(v -> onClick.run());
+        if (onLongClick != null) outer.setOnLongClickListener(v -> { onLongClick.run(); return true; });
+
+        LinearLayout text = new LinearLayout(context);
+        text.setOrientation(LinearLayout.VERTICAL);
+        TextView title = new TextView(context);
+        title.setText(mainText);
+        title.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 15);
+        title.setTextColor(Theme.getColor(Theme.key_dialogTextBlack));
+        title.setMaxLines(1);
+        title.setEllipsize(TextUtils.TruncateAt.MIDDLE);
+        text.addView(title, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT));
+        if (subText != null && !subText.isEmpty()) {
+            TextView sub = new TextView(context);
+            sub.setText(subText);
+            sub.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 12);
+            sub.setTextColor(Theme.getColor(Theme.key_dialogTextGray3));
+            sub.setMaxLines(1);
+            sub.setEllipsize(TextUtils.TruncateAt.END);
+            text.addView(sub, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, 0, 2, 0, 0));
+        }
+        outer.addView(text, LayoutHelper.createLinear(0, LayoutHelper.WRAP_CONTENT, 1f));
+        return outer;
+    }
+
+    @SuppressLint("NewApi")
+    private void startPasskeyLogin(String credentialIdB64) {
+        if (getParentActivity() == null) return;
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return;
+        PasskeysController.loginWithCredentialId(getParentActivity(), currentAccount, credentialIdB64, (userId, authObject, err) -> AndroidUtilities.runOnUIThread(() -> {
+            if (err != null && !"CANCELLED".equals(err) && !"EMPTY".equals(err)) {
+                Toast.makeText(getParentActivity(), err, Toast.LENGTH_LONG).show();
+                return;
+            }
+            if (userId != null && userId != 0 && getParentActivity() instanceof LaunchActivity) {
+                for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
+                    UserConfig userConfig = UserConfig.getInstance(a);
+                    if (!userConfig.isClientActivated()) continue;
+                    if (userConfig.getClientUserId() == userId) {
+                        if (UserConfig.selectedAccount != a) {
+                            ((LaunchActivity) getParentActivity()).switchToAccount(a, true);
+                        }
+                        finishFragment();
+                        return;
+                    }
+                }
+                if (authObject instanceof TLRPC.TL_auth_authorization) {
+                    onAuthSuccess((TLRPC.TL_auth_authorization) authObject);
+                }
+            }
+        }));
     }
 
     private void performAuthKeyLogin(int dcId, long expectedUserId, byte[] authKeyBytes) {
@@ -2654,13 +2861,25 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
             }
 
             if (activityMode == MODE_LOGIN) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && BuildVars.SUPPORTS_PASSKEYS && SoftwarePasskey.hasAnyLocalCredential(context)) {
+                    TextView passkeyLoginButton = new TextView(context);
+                    passkeyLoginButton.setText(getString(R.string.LoginViaPasskey));
+                    passkeyLoginButton.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
+                    passkeyLoginButton.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlueText4));
+                    passkeyLoginButton.setGravity(Gravity.CENTER);
+                    passkeyLoginButton.setPadding(AndroidUtilities.dp(16), AndroidUtilities.dp(8), AndroidUtilities.dp(16), AndroidUtilities.dp(8));
+                    passkeyLoginButton.setOnClickListener(v -> showPasskeyAccountsDialog());
+                    addView(passkeyLoginButton, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL, 16, 8, 16, 0));
+                    bottomMargin = Math.max(0, bottomMargin - 32);
+                }
+
                 TextView authKeyLoginButton = new TextView(context);
                 authKeyLoginButton.setText(getString(R.string.LoginViaAuthKey));
                 authKeyLoginButton.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
                 authKeyLoginButton.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlueText4));
                 authKeyLoginButton.setGravity(Gravity.CENTER);
                 authKeyLoginButton.setPadding(AndroidUtilities.dp(16), AndroidUtilities.dp(8), AndroidUtilities.dp(16), AndroidUtilities.dp(8));
-                authKeyLoginButton.setOnClickListener(v -> showAuthKeyLoginDialog());
+                authKeyLoginButton.setOnClickListener(v -> showAuthKeyAccountsDialog());
                 addView(authKeyLoginButton, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL, 16, 8, 16, 0));
                 bottomMargin = Math.max(0, bottomMargin - 32);
             }
